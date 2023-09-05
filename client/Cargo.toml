@@ -42,6 +42,7 @@ engine = { package = "stronghold_engine", path = "../engine", version = "1.0.0" 
 stronghold_utils = { package = "stronghold-utils", path = "../utils/", version = "1.0.0" }
 stronghold_derive = { package = "stronghold-derive", path = "../derive", version = "1.0.0" }
 rust-argon2 = { version = "=1.0.0" }
+hex = { version = "0.4.3", default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = [ "full" ] }

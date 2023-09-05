@@ -11,7 +11,7 @@ use crate::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
         BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType,
         MnemonicLanguage, PublicKey, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
-        WriteVault, X25519DiffieHellman,
+        WriteVault, X25519DiffieHellman, DidKeyDeriveInput, DidKeyDerive
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -801,6 +801,104 @@ async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> 
 
     let result = client.execute_procedure(bip39_recover);
     assert!(result.is_ok());
+
+    Ok(())
+}
+
+// Did Key Derive for Polito - TESTS
+
+#[tokio::test]
+async fn usecase_did_key_derive_keys() -> Result<(), Box<dyn std::error::Error>> {
+    // Generate a BIP39 seed or retrieve from Location
+    let stronghold: Stronghold = Stronghold::default();
+    let client: Client = stronghold.create_client(b"client_path").unwrap();
+
+    let passphrase = random::string(4096);
+    let seed = fresh::location();
+
+    let generate_bip39 = BIP39Generate {
+        language: MnemonicLanguage::English,
+        passphrase: Some(passphrase.clone()),
+        output: seed.clone(),
+    };
+
+    let generate_bip39_result = client.execute_procedure(generate_bip39);
+    assert!(generate_bip39_result.is_ok());
+
+    if generate_bip39_result.is_ok() {
+        println!("Mnemonic: {}", generate_bip39_result.ok().unwrap());
+    }
+
+    let did_key_derive: DidKeyDerive = DidKeyDerive {
+        input: DidKeyDeriveInput::Seed(seed.clone()),
+        registry: 1,
+        method_type: 1,
+        contract_addr: "0x24a0ca094f13fe1376f8f79e58a7b192da5a7e01".to_string(),
+        verification_method: 1,
+        index: 0,
+        output: fresh::location(),
+    };
+
+    let did_key_derive_result = client.execute_procedure(did_key_derive);
+    assert!(did_key_derive_result.is_ok());
+
+    if did_key_derive_result.is_ok() {
+        println!("Chain Code:");
+        println!("{:x?}", did_key_derive_result.ok().unwrap());
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn usecase_sign_with_did_key_derive() -> Result<(), Box<dyn std::error::Error>> {
+    let stronghold: Stronghold = Stronghold::default();
+    let client: Client = stronghold.create_client(b"client_path").unwrap();
+
+    let vault_path = random::variable_bytestring(1024);
+    // Seed vault location
+    let seed = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+    // Key from DidKeyDerive location into vault
+    let key = Location::generic(vault_path, random::variable_bytestring(1024));
+
+    let passphrase = random::string(1024);
+    let generate_bip39 = BIP39Generate {
+        language: MnemonicLanguage::English,
+        passphrase: Some(passphrase.clone()),
+        output: seed.clone(),
+    };
+
+    assert!(client.execute_procedure(generate_bip39).is_ok());
+
+    let did_key_derive: DidKeyDerive = DidKeyDerive {
+        input: DidKeyDeriveInput::Seed(seed.clone()),
+        registry: 1,
+        method_type: 1,
+        contract_addr: "0x24a0ca094f13fe1376f8f79e58a7b192da5a7e01".to_string(),
+        verification_method: 1,
+        index: 0,
+        output: key.clone(),
+    };
+
+    assert!(client.execute_procedure(did_key_derive).is_ok());
+
+    let ed25519_pk = PublicKey {
+        private_key: key.clone(),
+        ty: KeyType::Ed25519,
+    };
+    let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = client.execute_procedure(ed25519_pk).unwrap();
+
+    let msg = fresh::variable_bytestring(4096);
+
+    let ed25519_sign = Ed25519Sign {
+        private_key: key,
+        msg: msg.clone(),
+    };
+    let sig: [u8; ed25519::SIGNATURE_LENGTH] = client.execute_procedure(ed25519_sign).unwrap();
+
+    let pk = ed25519::PublicKey::try_from_bytes(pk).unwrap();
+    let sig = ed25519::Signature::from_bytes(sig);
+    assert!(pk.verify(&sig, &msg));
 
     Ok(())
 }

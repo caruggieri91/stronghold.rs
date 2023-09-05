@@ -31,6 +31,7 @@ use engine::runtime::memories::buffer::{Buffer, Ref};
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
+use hex;
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.
 ///
@@ -44,6 +45,7 @@ pub enum StrongholdProcedure {
     CopyRecord(CopyRecord),
     Slip10Generate(Slip10Generate),
     Slip10Derive(Slip10Derive),
+    DidKeyDerive(DidKeyDerive),
     BIP39Generate(BIP39Generate),
     BIP39Recover(BIP39Recover),
     PublicKey(PublicKey),
@@ -76,6 +78,7 @@ impl Procedure for StrongholdProcedure {
             CopyRecord(proc) => proc.execute(runner).map(|o| o.into()),
             Slip10Generate(proc) => proc.execute(runner).map(|o| o.into()),
             Slip10Derive(proc) => proc.execute(runner).map(|o| o.into()),
+            DidKeyDerive(proc) => proc.execute(runner).map(|o| o.into()),
             BIP39Generate(proc) => proc.execute(runner).map(|o| o.into()),
             BIP39Recover(proc) => proc.execute(runner).map(|o| o.into()),
             GenerateKey(proc) => proc.execute(runner).map(|o| o.into()),
@@ -204,7 +207,7 @@ generic_procedures! {
     UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
-    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt },
+    DeriveSecret<1> => { CopyRecord, Slip10Derive, DidKeyDerive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt },
     DeriveSecret<2> => { ConcatSecret }
 }
 
@@ -455,6 +458,98 @@ impl GenerateSecret for Slip10Generate {
         &self.output
     }
 }
+
+// -- Start Polito DID research section
+
+/// DID Derive Key Input for Polito DID research implementation
+#[derive(GuardDebug, Clone, Serialize, Deserialize)]
+pub enum DidKeyDeriveInput {
+    /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
+    Seed(Location),
+    Key(Location), // Master key into Vault
+}
+
+/// Derive a SLIP10 child key for Polito DID research from a seed or a master key into stronghold vault store it in output location and
+/// return the corresponding chain code
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DidKeyDerive {
+    pub input: DidKeyDeriveInput,
+    pub registry: u32,
+    pub method_type: u32,
+    pub contract_addr: String, /// Hex encoded did-contract address
+    pub verification_method: u32,
+    pub index: u32,
+    pub output: Location,
+}
+
+impl DeriveSecret<1> for DidKeyDerive {
+    type Output = ChainCode;
+
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<ChainCode>, FatalProcedureError> {
+        
+        let sanitized_addr = sanitize_addr(self.contract_addr);
+        let mut decoded_addr = [0; 20];
+        hex::decode_to_slice(sanitized_addr, &mut decoded_addr).unwrap();
+
+        let firsts = &decoded_addr[0..4].try_into().unwrap();
+        let account = byte_array_as_u32(firsts);
+
+        let chain = Chain::from_u32_hardened(vec![
+            186, // BIP-0390 proposal
+            self.registry, // registry
+            self.method_type, // method type
+            account, // account (i.e. first 32 bits of the address of the deployed contract)
+            self.verification_method, // verification method
+            self.index, // index
+        ]);
+
+        let dk = match self.input {
+            DidKeyDeriveInput::Key(_) => {
+                slip10::Key::try_from(&*guards[0].borrow()).and_then(|parent| parent.derive(&chain))
+            }
+            DidKeyDeriveInput::Seed(_) => {
+                slip10::Seed::from_bytes(&guards[0].borrow()).derive(slip10::Curve::Ed25519, &chain)
+            }
+        }?;
+        Ok(Products {
+            secret: dk.into(),
+            output: dk.chain_code(),
+        })
+    }
+
+     fn source(&self) -> [Location; 1] {
+        match &self.input {
+            DidKeyDeriveInput::Key(loc) => [loc.clone()],
+            DidKeyDeriveInput::Seed(loc) => [loc.clone()],
+        }
+    }
+
+    fn target(&self) -> &Location {
+        &self.output
+    }
+}
+
+// Utils functions
+
+// Convert four-bytes array into u32
+fn byte_array_as_u32(array: &[u8; 4]) -> u32 {
+    ((array[0] as u32) << 24) |
+    ((array[1] as u32) << 16) |
+    ((array[2] as u32) <<  8) |
+    ((array[3] as u32) <<  0)
+}
+
+// Remove the 0x from the address string if present
+fn sanitize_addr(mut addr: String) -> String {
+    if addr.contains("0x") {
+        addr = addr.replace("0x", "");
+    }
+
+    println!("Sanitized address: {}", addr);
+    return addr;
+}
+
+// -- End Polito DID research section
 
 #[derive(GuardDebug, Clone, Serialize, Deserialize)]
 pub enum Slip10DeriveInput {
