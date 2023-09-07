@@ -5,3 +5,4 @@ mod fresh;
 mod interface_tests;
 mod procedure_tests;
 mod store_tests;
+mod did_locations;

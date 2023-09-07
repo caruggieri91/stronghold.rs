@@ -545,7 +545,7 @@ fn sanitize_addr(mut addr: String) -> String {
         addr = addr.replace("0x", "");
     }
 
-    println!("Sanitized address: {}", addr);
+    //println!("Sanitized address: {}", addr);
     return addr;
 }
 
