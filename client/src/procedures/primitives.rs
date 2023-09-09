@@ -495,7 +495,7 @@ impl DeriveSecret<1> for DidKeyDerive {
         let account = byte_array_as_u32(firsts);
 
         let chain = Chain::from_u32_hardened(vec![
-            186, // BIP-0390 proposal
+            1361, // BIP proposal
             self.registry, // registry
             self.method_type, // method type
             account, // account (i.e. first 32 bits of the address of the deployed contract)
