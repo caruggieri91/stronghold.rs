@@ -4,6 +4,7 @@
 mod clientrunner;
 mod primitives;
 mod types;
+mod wrapper;
 
 pub use clientrunner::*;
 
