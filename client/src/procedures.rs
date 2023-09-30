@@ -21,3 +21,5 @@ pub use types::{
     DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureOutput, UseSecret,
 };
 pub(crate) use types::{Products, Runner};
+
+pub use wrapper::{DidKey, DidKeyProcedures, SeedGeneratorForDid};
