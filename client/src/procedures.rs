@@ -22,4 +22,4 @@ pub use types::{
 };
 pub(crate) use types::{Products, Runner};
 
-pub use wrapper::{DidKey, DidKeyProcedures, SeedGeneratorForDid};
+pub use wrapper::{DidKey, SeedGeneratorForDid};
