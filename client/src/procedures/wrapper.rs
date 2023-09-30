@@ -62,7 +62,7 @@ pub struct DidKey {
 impl DidKey {
     pub unsafe fn add_did_key(&self) -> Result<(Vec<u8>, Vec<u8>), ProcedureError> {
         let stronghold: Stronghold = Stronghold::default();
-        let client: Client = stronghold.create_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
+        let client: Client = stronghold.get_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
         // Vault path
         let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
         // Seed path and location for seed
@@ -101,7 +101,7 @@ impl DidKey {
 
     pub unsafe fn remove_did_key(&self) -> Result<(Vec<u8>, bool), ClientError> {
         let stronghold: Stronghold = Stronghold::default();
-        let client: Client = stronghold.create_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
+        let client: Client = stronghold.get_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
         // Vault path
         let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
         
