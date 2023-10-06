@@ -44,8 +44,6 @@ impl SeedGeneratorForDid {
     
         let generate_bip39_result = client.execute_procedure(generate_bip39);
 
-        println!("Vault exists: {}", client.vault_exists(vault_path.clone().as_bytes()).unwrap_or_default());
-
         if generate_bip39_result.is_ok() {
             Self::commit(stronghold, passphrase.clone());
             Ok(generate_bip39_result.ok().unwrap())
@@ -66,16 +64,13 @@ impl SeedGeneratorForDid {
         
         match result {
             Err(ClientError::SnapshotFileMissing(_)) => {
-                println!("SnapshotFileMissing");
                 result = stronghold.create_client(data_client_path.clone());
                 stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider)?;
             }
             Err(ClientError::ClientAlreadyLoaded(_)) => {
-                println!("ClientAlreadyLoaded");
                 result = stronghold.get_client(data_client_path);
             }
             Err(ClientError::Inner(ref err_msg)) => {
-                println!("Inner {}", err_msg); 
                 // Matching the error string is not ideal but stronghold doesn't wrap the error types at the moment.
                 if err_msg.contains("XCHACHA20-POLY1305") || err_msg.contains("BadFileKey") {
                     return Err(result.err().unwrap());
@@ -87,9 +82,7 @@ impl SeedGeneratorForDid {
                     }
                 }
             }
-            _ => {
-                println!("Client OK!");
-            }
+            _ => { }
         }
     
        result
@@ -141,7 +134,6 @@ impl DidKey {
         };
     
         let did_key_derive_result = client.execute_procedure(did_key_derive);
-        println!("Vault exists: {}", client.vault_exists(vault_path.clone().as_bytes()).unwrap_or_default());
 
         if did_key_derive_result.is_ok() {
             // Retrieve a public key and return its bytes
@@ -203,16 +195,13 @@ impl DidKey {
         
         match result {
             Err(ClientError::SnapshotFileMissing(_)) => {
-                println!("SnapshotFileMissing");
                 result = stronghold.create_client(data_client_path.clone());
                 stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider)?;
             }
             Err(ClientError::ClientAlreadyLoaded(_)) => {
-                println!("ClientAlreadyLoaded");
                 result = stronghold.get_client(data_client_path);
             }
             Err(ClientError::Inner(ref err_msg)) => {
-                println!("Inner {}", err_msg); 
                 // Matching the error string is not ideal but stronghold doesn't wrap the error types at the moment.
                 if err_msg.contains("XCHACHA20-POLY1305") || err_msg.contains("BadFileKey") {
                     return Err(result.err().unwrap());
@@ -224,9 +213,7 @@ impl DidKey {
                     }
                 }
             }
-            _ => {
-                println!("Client OK!");
-            }
+            _ => { }
         }
     
        result
