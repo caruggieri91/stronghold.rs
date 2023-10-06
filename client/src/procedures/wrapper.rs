@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
 
@@ -10,7 +12,7 @@ use crate::{
         MnemonicLanguage, PublicKey, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
         X25519DiffieHellman, DidKeyDeriveInput, DidKeyDerive
     },
-    Client, Location, Stronghold, ClientError,
+    Client, Location, Stronghold, ClientError, SnapshotPath, KeyProvider,
 };
 use crypto::signatures::ed25519;
 
@@ -27,7 +29,7 @@ impl SeedGeneratorForDid {
     pub fn generate_seed(&self) -> Result<String, ProcedureError> {
         // Generate a BIP39 seed or retrieve from Location
         let stronghold: Stronghold = Stronghold::default();
-        let client: Client = stronghold.create_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
+        let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
 
         let passphrase: String = self.passphrase.clone();
         let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
@@ -42,16 +44,68 @@ impl SeedGeneratorForDid {
     
         let generate_bip39_result = client.execute_procedure(generate_bip39);
 
+        println!("Vault exists: {}", client.vault_exists(vault_path.clone().as_bytes()).unwrap_or_default());
+
         if generate_bip39_result.is_ok() {
+            Self::commit(stronghold, passphrase.clone());
             Ok(generate_bip39_result.ok().unwrap())
         } else {
             Err(generate_bip39_result.err().unwrap())
         }
     }
+
+    /// This function create a client for stronghold and commit its snapshot
+    fn get_client(stronghold: Stronghold, passphrase: String) -> Result<Client, ClientError> {
+        let path = std::env::var("DID_POLITO_SNAPSHOT_PATH").expect("$DID_POLITO_SNAPSHOT_PATH must be set.");
+        let data_client_path =  std::env::var("DID_POLITO_DATA_CLIENT_PATH").expect("$DID_POLITO_DATA_CLIENT_PATH must be set.");
+    
+        let key_provider =  KeyProvider::with_passphrase_hashed_blake2b(passphrase.clone()).expect("Fail to create keyprovider");
+        
+        let snapshot_path = SnapshotPath::from_path(Path::new(path.as_str()));
+        let mut result = stronghold.load_client_from_snapshot(data_client_path.clone(), &key_provider, &snapshot_path.clone());
+        
+        match result {
+            Err(ClientError::SnapshotFileMissing(_)) => {
+                println!("SnapshotFileMissing");
+                result = stronghold.create_client(data_client_path.clone());
+                stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider)?;
+            }
+            Err(ClientError::ClientAlreadyLoaded(_)) => {
+                println!("ClientAlreadyLoaded");
+                result = stronghold.get_client(data_client_path);
+            }
+            Err(ClientError::Inner(ref err_msg)) => {
+                println!("Inner {}", err_msg); 
+                // Matching the error string is not ideal but stronghold doesn't wrap the error types at the moment.
+                if err_msg.contains("XCHACHA20-POLY1305") || err_msg.contains("BadFileKey") {
+                    return Err(result.err().unwrap());
+                } else if err_msg.contains("unsupported version") {
+                    if err_msg.contains("expected [3, 0], found [2, 0]") {
+                        return Err(result.err().unwrap());
+                    } else {
+                        panic!("unsupported version mismatch");
+                    }
+                }
+            }
+            _ => {
+                println!("Client OK!");
+            }
+        }
+    
+       result
+    }
+
+    fn commit(stronghold: Stronghold, passphrase: String) {
+        let path = std::env::var("DID_POLITO_SNAPSHOT_PATH").expect("$DID_POLITO_SNAPSHOT_PATH must be set.");
+        let snapshot_path = SnapshotPath::from_path(Path::new(path.as_str()));
+        let key_provider =  KeyProvider::with_passphrase_hashed_blake2b(passphrase).expect("Fail to create keyprovider");
+        stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider).expect("ERROR IN COMMIT");
+    }
 }
 
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct DidKey {
+    pub passphrase: String,
     pub contract_address: String,
     pub registry: u32,
     pub method_type: u32,
@@ -62,17 +116,18 @@ pub struct DidKey {
 impl DidKey {
     pub unsafe fn add_did_key(&self) -> Result<(Vec<u8>, Vec<u8>), ProcedureError> {
         let stronghold: Stronghold = Stronghold::default();
-        let client: Client = stronghold.get_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
+        let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
         // Vault path
         let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
+       
         // Seed path and location for seed
-        let seed_record_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_and_address_" + self.contract_address.as_str();
+        let seed_record_path: String = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_and_address_" + self.contract_address.as_str();
         let seed_location = Location::generic(vault_path.clone().as_bytes(), seed_record_path.clone().as_bytes());
         // Key path and location for key
         // Key path is a vector composed by purpose + registry + method_type + verification_method + index
         let key_record_path = Vec::from([PURPOSE | HARDEN_MASK, self.registry | HARDEN_MASK, self.method_type | HARDEN_MASK, 
             self.verification_method | HARDEN_MASK, self.index | HARDEN_MASK]);
-        let key_location = Location::generic(vault_path.clone(), key_record_path.clone().align_to::<u8>().1.to_vec());
+        let key_location = Location::generic(vault_path.clone().as_bytes(), key_record_path.clone().align_to::<u8>().1.to_vec());
         
         // Generate derived private key and store it
         let did_key_derive: DidKeyDerive = DidKeyDerive {
@@ -86,6 +141,8 @@ impl DidKey {
         };
     
         let did_key_derive_result = client.execute_procedure(did_key_derive);
+        println!("Vault exists: {}", client.vault_exists(vault_path.clone().as_bytes()).unwrap_or_default());
+
         if did_key_derive_result.is_ok() {
             // Retrieve a public key and return its bytes
             let ed25519_pk = PublicKey {
@@ -93,6 +150,7 @@ impl DidKey {
                 ty: KeyType::Ed25519,
             };
             let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = client.execute_procedure(ed25519_pk).unwrap();
+            Self::commit(stronghold.clone(), self.passphrase.clone());
             Ok((key_record_path.clone().align_to::<u8>().1.to_vec(), pk.to_vec()))
         } else {
             Err(did_key_derive_result.err().unwrap())
@@ -101,7 +159,7 @@ impl DidKey {
 
     pub unsafe fn remove_did_key(&self) -> Result<(Vec<u8>, bool), ClientError> {
         let stronghold: Stronghold = Stronghold::default();
-        let client: Client = stronghold.get_client(std::env::var("DID_POLITO_STRONGHOLD_CLIENT_PATH").expect("$DID_POLITO_STRONGHOLD_CLIENT_PATH must be set.")).unwrap();
+        let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
         // Vault path
         let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
         
@@ -120,6 +178,7 @@ impl DidKey {
                 let delete_key_result = client.vault(vault_path.clone()).delete_secret(key_record_path.clone().align_to::<u8>().1.to_vec());
                 if delete_key_result.is_ok() {
                     let res = delete_key_result.unwrap();
+                    Self::commit(stronghold.clone(), self.passphrase.clone());
                     Ok((key_record_path.clone().align_to::<u8>().1.to_vec(), res))
                 } else {
                     Err(delete_key_result.err().unwrap())
@@ -130,5 +189,53 @@ impl DidKey {
         } else {
             Err(rec_exists_result.err().unwrap())
         }
+    }
+
+    /// This function create a client for stronghold and commit its snapshot
+    fn get_client(stronghold: Stronghold, passphrase: String) -> Result<Client, ClientError> {
+        let path = std::env::var("DID_POLITO_SNAPSHOT_PATH").expect("$DID_POLITO_SNAPSHOT_PATH must be set.");
+        let data_client_path =  std::env::var("DID_POLITO_DATA_CLIENT_PATH").expect("$DID_POLITO_DATA_CLIENT_PATH must be set.");
+        
+        let key_provider =  KeyProvider::with_passphrase_hashed_blake2b(passphrase.clone()).expect("Fail to create keyprovider");
+        
+        let snapshot_path = SnapshotPath::from_path(Path::new(path.as_str()));
+        let mut result = stronghold.load_client_from_snapshot(data_client_path.clone(), &key_provider, &snapshot_path.clone());
+        
+        match result {
+            Err(ClientError::SnapshotFileMissing(_)) => {
+                println!("SnapshotFileMissing");
+                result = stronghold.create_client(data_client_path.clone());
+                stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider)?;
+            }
+            Err(ClientError::ClientAlreadyLoaded(_)) => {
+                println!("ClientAlreadyLoaded");
+                result = stronghold.get_client(data_client_path);
+            }
+            Err(ClientError::Inner(ref err_msg)) => {
+                println!("Inner {}", err_msg); 
+                // Matching the error string is not ideal but stronghold doesn't wrap the error types at the moment.
+                if err_msg.contains("XCHACHA20-POLY1305") || err_msg.contains("BadFileKey") {
+                    return Err(result.err().unwrap());
+                } else if err_msg.contains("unsupported version") {
+                    if err_msg.contains("expected [3, 0], found [2, 0]") {
+                        return Err(result.err().unwrap());
+                    } else {
+                        panic!("unsupported version mismatch");
+                    }
+                }
+            }
+            _ => {
+                println!("Client OK!");
+            }
+        }
+    
+       result
+    }
+
+    fn commit(stronghold: Stronghold, passphrase: String) {
+        let path = std::env::var("DID_POLITO_SNAPSHOT_PATH").expect("$DID_POLITO_SNAPSHOT_PATH must be set.");
+        let snapshot_path = SnapshotPath::from_path(Path::new(path.as_str()));
+        let key_provider =  KeyProvider::with_passphrase_hashed_blake2b(passphrase).expect("Fail to create keyprovider");
+        stronghold.commit_with_keyprovider(&snapshot_path.clone(), &key_provider).expect("ERROR IN COMMIT");
     }
 } 

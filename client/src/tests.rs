@@ -7,3 +7,4 @@ mod procedure_tests;
 mod store_tests;
 mod did_locations;
 mod did_tests;
+mod wrapper_tests;
