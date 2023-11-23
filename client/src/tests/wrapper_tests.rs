@@ -9,7 +9,7 @@ pub async fn usecase_generate_seed() {
     std::env::set_var("DID_POLITO_SNAPSHOT_PATH",  "./example.stronghold");
 
     let seed_generator = SeedGeneratorForDid {
-        contract_address: "0xfd59a6f6f4537945a5ce98f32200d96df6a3809e".to_string(),
+        seed_location_id: "0xaa59a6f6f4537945a5ce98f32200d96df6a39999".to_string(),
         passphrase: "TEST_POLITO".to_string(),
     };
 
@@ -28,6 +28,7 @@ pub async fn usecase_add_key() {
 
     let add_key_generator = DidKey {
         passphrase: "TEST_POLITO".to_string(),
+        seed_location_id: "0xaa59a6f6f4537945a5ce98f32200d96df6a39999".to_string(),
         contract_address: "0xfd59a6f6f4537945a5ce98f32200d96df6a3809e".to_string(),
         registry: 1,
         method_type: 1,
@@ -51,6 +52,7 @@ pub async fn usecase_remove_key() {
 
     let remove_key_generator = DidKey {
         passphrase: "TEST_POLITO".to_string(),
+        seed_location_id: "0xaa59a6f6f4537945a5ce98f32200d96df6a39999".to_string(),
         contract_address: "0xfd59a6f6f4537945a5ce98f32200d96df6a3809e".to_string(),
         registry: 1,
         method_type: 1,

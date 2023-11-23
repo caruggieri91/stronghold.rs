@@ -21,7 +21,7 @@ const HARDEN_MASK: u32 = 1 << 31;
 
 pub struct SeedGeneratorForDid {
     pub passphrase: String,
-    pub contract_address: String
+    pub seed_location_id: String
 }
 
 impl SeedGeneratorForDid {
@@ -32,8 +32,8 @@ impl SeedGeneratorForDid {
         let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
 
         let passphrase: String = self.passphrase.clone();
-        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
-        let record_path: String = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_and_address_" + self.contract_address.as_str();
+        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.");
+        let record_path: String = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_" + self.seed_location_id.as_str();
         let location: Location = Location::generic(vault_path.clone().as_bytes(), record_path.clone().as_bytes());
 
         let generate_bip39 = BIP39Generate {
@@ -99,6 +99,7 @@ impl SeedGeneratorForDid {
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct DidKey {
     pub passphrase: String,
+    pub seed_location_id: String,
     pub contract_address: String,
     pub registry: u32,
     pub method_type: u32,
@@ -111,10 +112,10 @@ impl DidKey {
         let stronghold: Stronghold = Stronghold::default();
         let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
         // Vault path
-        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
+        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.");
        
         // Seed path and location for seed
-        let seed_record_path: String = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_and_address_" + self.contract_address.as_str();
+        let seed_record_path: String = std::env::var("DID_POLITO_STRONGHOLD_BASE_RECORD_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_RECORD_PATH must be set.") + "_seed_" + self.seed_location_id.as_str();
         let seed_location = Location::generic(vault_path.clone().as_bytes(), seed_record_path.clone().as_bytes());
         // Key path and location for key
         // Key path is a vector composed by purpose + registry + method_type + verification_method + index
@@ -153,7 +154,7 @@ impl DidKey {
         let stronghold: Stronghold = Stronghold::default();
         let client: Client = Self::get_client(stronghold.clone(), self.passphrase.clone()).unwrap();
         // Vault path
-        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.") + "_" + self.contract_address.as_str();
+        let vault_path = std::env::var("DID_POLITO_STRONGHOLD_BASE_VAULT_PATH").expect("$DID_POLITO_STRONGHOLD_BASE_VAULT_PATH must be set.");
         
         // Key location and key record path
         let key_record_path = Vec::from([PURPOSE | HARDEN_MASK, self.registry | HARDEN_MASK, self.method_type | HARDEN_MASK, 
